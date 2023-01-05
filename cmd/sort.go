@@ -8,6 +8,7 @@ import (
 
 func init() {
 	rootCmd.AddCommand(sortCmd)
+	sortCmd.PersistentFlags().String("format", "YYYY/MM", "The folder structure used for organise the photos")
 }
 
 var sortCmd = &cobra.Command{
