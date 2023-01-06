@@ -3,7 +3,8 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"photosorter/pkg/photosorter"
+
+	"github.com/elmarsan/photosorter/pkg/photosorter"
 
 	"github.com/spf13/cobra"
 )
