@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/elmarsan/photosorter/pkg/photosorter"
-
 	"github.com/spf13/cobra"
 )
 

@@ -169,9 +169,11 @@ func SortDir(src string, dst string, format string) {
 			fmt.Printf("Image %s could not be processed. Cause: %v\n", src, err)
 		}
 
-		err = img.Save(dst, format)
-		if err != nil {
-			fmt.Printf("Image %s could not be saved. Cause: %v\n", src, err)
+		if img != nil {
+			err = img.Save(dst, format)
+			if err != nil {
+				fmt.Printf("Image %s could not be saved. Cause: %v\n", src, err)
+			}
 		}
 
 		bar.Add(1)
