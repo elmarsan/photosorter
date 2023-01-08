@@ -41,8 +41,8 @@ func NewImage(src string) (*Image, error) {
 
 	// Extract exif
 	rawExif, err := exif.SearchFileAndExtractExif(src)
-	if err != nil && err.Error() != "no exif data" {
-		return nil, fmt.Errorf("missing exif\n")
+	if err != nil {
+		return nil, fmt.Errorf("exif not found\n")
 	}
 
 	// Exif ifd mapping
@@ -139,6 +139,7 @@ func (img *Image) dst(dstDir string, format string) string {
 	return dst
 }
 
+// DirSortReport holds information about the sort directory proccess
 type DirSortReport struct {
 	// elapsed time for sorting the directory.
 	Elapsed time.Duration
@@ -172,6 +173,41 @@ func SortDir(src string, dst string, format string) (*DirSortReport, error) {
 		return nil, err
 	}
 
+	createCh := make(chan string)
+	saveCh := make(chan (*Image))
+
+	// Goroutine for creating images
+	// It receives by channel img src and tries to create it
+	// If error occurs it adds the cause to report otherwise send img over savech
+	go func() {
+		for path := range createCh {
+			img, err := NewImage(path)
+			if err != nil {
+				report.Unprocessed[path] = err.Error()
+			} else {
+				saveCh <- img
+			}
+		}
+
+		close(createCh)
+	}()
+
+	// Goroutine for saving images
+	// It receives by channel Image struct and tries to save it
+	// If error occurs it adds the cause to report otherwise img is saved in dst directory
+	go func() {
+		for img := range saveCh {
+			err := img.Save(dst, format)
+			if err != nil {
+				report.Unprocessed[img.src] = err.Error()
+			} else {
+				report.Imgs++
+			}
+		}
+
+		close(saveCh)
+	}()
+
 	// Walk through the files in the source directory
 	filepath.Walk(src, func(path string, f os.FileInfo, _ error) error {
 		if !f.IsDir() {
@@ -182,27 +218,11 @@ func SortDir(src string, dst string, format string) (*DirSortReport, error) {
 			}
 
 			if jpg {
-				img, err := NewImage(path)
-				if err != nil {
-					// Add the file to the unprocessed map with the error message
-					report.Unprocessed[path] = err.Error()
-					return nil
-				}
-
-				// Save the image to the destination directory
-				err = img.Save(dst, format)
-				if err != nil {
-					// Add the file to the unprocessed map with the error message
-					report.Unprocessed[path] = err.Error()
-					return nil
-				}
-
-				report.Imgs++
-				return nil
+				createCh <- path
+			} else {
+				// File with no jpg extension are placed in unprocessed directly
+				report.Unprocessed[path] = "Not .jpg extension"
 			}
-
-			// File with no jpg extension are placed in unprocessed directly
-			report.Unprocessed[path] = "Not .jpg extension"
 		}
 
 		return nil

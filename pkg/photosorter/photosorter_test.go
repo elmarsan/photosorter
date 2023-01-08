@@ -8,6 +8,7 @@ import (
 )
 
 var imgPath = path.Join("..", "..", "test", "img")
+var imgOutputPath = path.Join("..", "..", "test", "output")
 var invalidImgPath = path.Join("..", "..", "test", "invalid_img")
 
 type SortTestCase struct {
@@ -43,7 +44,7 @@ func TestSortDir(t *testing.T) {
 	t.Run("Month directory structure", func(t *testing.T) {
 		stc := &SortTestCase{
 			src:    imgPath,
-			dst:    imgPath + "/output",
+			dst:    imgOutputPath,
 			format: "month",
 			paths: []string{
 				"/2007/September/mountain.jpg",
@@ -66,7 +67,7 @@ func TestSortDir(t *testing.T) {
 	t.Run("Year directory structure", func(t *testing.T) {
 		stc := &SortTestCase{
 			src:    imgPath,
-			dst:    imgPath + "/output",
+			dst:    imgOutputPath,
 			format: "year",
 			paths: []string{
 				"/2007/mountain.jpg",
