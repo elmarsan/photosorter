@@ -28,7 +28,14 @@ var sortCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		photosorter.SortDir(args[0], args[1], format)
+		report, err := photosorter.SortDir(args[0], args[1], format)
+
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		fmt.Printf("Finished in: %fs\n", report.Elapsed.Seconds())
 	},
 }
 

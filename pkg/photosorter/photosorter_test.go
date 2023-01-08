@@ -3,6 +3,7 @@ package photosorter
 import (
 	"os"
 	"path"
+	"strings"
 	"testing"
 )
 
@@ -10,20 +11,29 @@ var imgPath = path.Join("..", "..", "test", "img")
 var invalidImgPath = path.Join("..", "..", "test", "invalid_img")
 
 type SortTestCase struct {
-	src    string
-	dst    string
-	format string
-	paths  []string
+	src          string
+	dst          string
+	format       string
+	paths        []string
+	invalidFiles []string
 }
 
 func (stc *SortTestCase) Run(t *testing.T) {
-	SortDir(stc.src, stc.dst, stc.format)
+	report, _ := SortDir(stc.src, stc.dst, stc.format)
 
 	for _, p := range stc.paths {
 		_, err := os.Stat(stc.dst + p)
 		if os.IsNotExist(err) {
 			t.Errorf("Missing image %s", p)
 		}
+	}
+
+	if report.Imgs != len(stc.paths) {
+		t.Errorf("Processed imgs: %d, expected: %d.", report.Imgs, len(stc.paths))
+	}
+
+	if len(report.Unprocessed) != len(stc.invalidFiles) {
+		t.Errorf("Unprocessed files: %d, expected: %d.", len(report.Unprocessed), len(stc.invalidFiles))
 	}
 
 	os.RemoveAll(stc.dst)
@@ -44,6 +54,10 @@ func TestSortDir(t *testing.T) {
 				"/2014/September/leaf.jpg",
 				"/2015/February/light.jpg",
 			},
+			invalidFiles: []string{
+				strings.Join([]string{imgPath, "no_exif1.jpg"}, "/"),
+				strings.Join([]string{imgPath, "no_img.txt"}, "/"),
+			},
 		}
 
 		stc.Run(t)
@@ -63,6 +77,10 @@ func TestSortDir(t *testing.T) {
 				"/2014/leaf.jpg",
 				"/2015/light.jpg",
 			},
+			invalidFiles: []string{
+				strings.Join([]string{imgPath, "no_exif1.jpg"}, "/"),
+				strings.Join([]string{imgPath, "no_img.txt"}, "/"),
+			},
 		}
 
 		stc.Run(t)
@@ -75,6 +93,10 @@ func TestSortDir(t *testing.T) {
 			src:    invalidImgPath,
 			dst:    dst,
 			format: "year",
+			invalidFiles: []string{
+				strings.Join([]string{imgPath, "no_exif1.jpg"}, "/"),
+				strings.Join([]string{imgPath, "no_exif2.jpg"}, "/"),
+			},
 		}
 
 		_, err := os.Stat(dst)
@@ -83,5 +105,16 @@ func TestSortDir(t *testing.T) {
 		}
 
 		stc.Run(t)
+	})
+
+	t.Run("Should return error when src directory does not exist", func(t *testing.T) {
+		src := "/failing/directory"
+		dst := "/failing/directory/output"
+
+		_, err := SortDir(src, dst, "year")
+
+		if err == nil {
+			t.Errorf("%s directory should NOT exist", src)
+		}
 	})
 }

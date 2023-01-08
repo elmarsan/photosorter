@@ -3,15 +3,15 @@ package photosorter
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/dsoprea/go-exif/v3"
 	exifcommon "github.com/dsoprea/go-exif/v3/common"
-	"github.com/schollz/progressbar/v3"
 )
 
 // Image represents an image file and holds original creation time from metadata.
@@ -36,26 +36,26 @@ func NewImage(src string) (*Image, error) {
 	// Get src img content
 	d, err := os.ReadFile(src)
 	if err != nil {
-		return nil, fmt.Errorf("Reading file %v", err)
+		return nil, fmt.Errorf("Reading file %v\n", err)
 	}
 
 	// Extract exif
 	rawExif, err := exif.SearchFileAndExtractExif(src)
 	if err != nil && err.Error() != "no exif data" {
-		return nil, fmt.Errorf("missing exif")
+		return nil, fmt.Errorf("missing exif\n")
 	}
 
 	// Exif ifd mapping
 	im, err := exifcommon.NewIfdMappingWithStandard()
 	if err != nil {
-		return nil, fmt.Errorf("exif format")
+		return nil, fmt.Errorf("exif format\n")
 	}
 
 	// Exif index for explore different tags
 	ti := exif.NewTagIndex()
 	_, index, err := exif.Collect(im, ti, rawExif)
 	if err != nil {
-		return nil, fmt.Errorf("exif format")
+		return nil, fmt.Errorf("exif format\n")
 	}
 
 	// Exif original creation time
@@ -63,18 +63,18 @@ func NewImage(src string) (*Image, error) {
 	rootIfd := index.RootIfd
 	results, err := rootIfd.FindTagWithName(tagName)
 	if err != nil {
-		return nil, fmt.Errorf("exif Tag: DateTime")
+		return nil, fmt.Errorf("exif Tag: DateTime\n")
 	}
 
 	// Parse exif date to time.Time
 	timeString, err := results[0].Format()
 	if err != nil {
-		return nil, fmt.Errorf("exif parsing Tag: DateTime")
+		return nil, fmt.Errorf("exif parsing Tag: DateTime\n")
 	}
 
 	tm, err := time.Parse("2006:01:02 15:04:05", timeString)
 	if err != nil {
-		return nil, fmt.Errorf("exif parsing Tag: DateTime")
+		return nil, fmt.Errorf("exif parsing Tag: DateTime\n")
 	}
 
 	return &Image{
@@ -128,7 +128,7 @@ func (img *Image) dst(dstDir string, format string) string {
 	if os.IsNotExist(err) {
 		err := os.MkdirAll(dir, 0755)
 		if err != nil {
-			log.Printf("Error creating dst directory %s \n", dir)
+			fmt.Printf("Error creating dst directory %s \n", dir)
 		}
 	}
 
@@ -139,43 +139,76 @@ func (img *Image) dst(dstDir string, format string) string {
 	return dst
 }
 
-func SortDir(src string, dst string, format string) {
-	files, err := ioutil.ReadDir(src)
-	if err != nil {
-		log.Fatalf("Reading %s src directory", src)
+type DirSortReport struct {
+	// elapsed time for sorting the directory.
+	Elapsed time.Duration
+	// number of images processed.
+	Imgs int
+	// map of unprocessed files and the error message.
+	Unprocessed map[string]string
+}
+
+// NewDirSortReport creates a new DirSortReport with default values.
+func NewDirSortReport() *DirSortReport {
+	return &DirSortReport{
+		Elapsed:     0,
+		Imgs:        0,
+		Unprocessed: make(map[string]string),
+	}
+}
+
+// SortDir sorts the files in the specified source directory and saves them to the destination directory.
+//
+// Only files with the .jpg extension will be processed.
+// The function returns a report with the elapsed time, number of images processed,
+// and a map of unprocessed files and the error message.
+func SortDir(src string, dst string, format string) (*DirSortReport, error) {
+	report := NewDirSortReport()
+	start := time.Now()
+
+	// Check if the source directory exists
+	_, err := ioutil.ReadDir(src)
+	if os.IsNotExist(err) {
+		return nil, err
 	}
 
-	progress := int64(len(files))
-	bar := progressbar.NewOptions(int(progress),
-		progressbar.OptionSetWriter(os.Stdout),
-		progressbar.OptionEnableColorCodes(true),
-		progressbar.OptionShowBytes(true),
-		progressbar.OptionSetWidth(15),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[cyan]=[reset]",
-			SaucerHead:    "[cyan]>[reset]",
-			SaucerPadding: " ",
-			BarStart:      "[",
-			BarEnd:        "]",
-		}))
-
-	for i, file := range files {
-		src := strings.Join([]string{src, file.Name()}, "/")
-		description := fmt.Sprintf("[cyan][%d/%d][reset]: %s", i, len(files), src)
-		bar.Describe(description)
-
-		img, err := NewImage(src)
-		if err != nil {
-			fmt.Printf("Image %s could not be processed. Cause: %v\n", src, err)
-		}
-
-		if img != nil {
-			err = img.Save(dst, format)
+	// Walk through the files in the source directory
+	filepath.Walk(src, func(path string, f os.FileInfo, _ error) error {
+		if !f.IsDir() {
+			// Check if the file has the .jpg extension
+			jpg, err := regexp.MatchString(".jpg", f.Name())
 			if err != nil {
-				fmt.Printf("Image %s could not be saved. Cause: %v\n", src, err)
+				fmt.Printf("regex err: %v", err)
 			}
+
+			if jpg {
+				img, err := NewImage(path)
+				if err != nil {
+					// Add the file to the unprocessed map with the error message
+					report.Unprocessed[path] = err.Error()
+					return nil
+				}
+
+				// Save the image to the destination directory
+				err = img.Save(dst, format)
+				if err != nil {
+					// Add the file to the unprocessed map with the error message
+					report.Unprocessed[path] = err.Error()
+					return nil
+				}
+
+				report.Imgs++
+				return nil
+			}
+
+			// File with no jpg extension are placed in unprocessed directly
+			report.Unprocessed[path] = "Not .jpg extension"
 		}
 
-		bar.Add(1)
-	}
+		return nil
+	})
+
+	// Calculate the elapsed time
+	report.Elapsed = time.Since(start)
+	return report, nil
 }
