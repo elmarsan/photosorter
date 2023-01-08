@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dsoprea/go-exif/v3"
@@ -92,6 +93,8 @@ func NewImage(src string) (*Image, error) {
 func (img *Image) Save(dir string, format string) error {
 	dst := img.dst(dir, format)
 
+	// fmt.Printf("save on %s\n", dst)
+
 	err := os.WriteFile(dst, img.data, 0755)
 	if err != nil {
 		return fmt.Errorf("Creating file %s. Cause: %v", dst, err)
@@ -175,38 +178,61 @@ func SortDir(src string, dst string, format string) (*DirSortReport, error) {
 
 	createCh := make(chan string)
 	saveCh := make(chan (*Image))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 
 	// Goroutine for creating images
 	// It receives by channel img src and tries to create it
-	// If error occurs it adds the cause to report otherwise send img over savech
-	go func() {
-		for path := range createCh {
+	// If error occurs it adds the cause to report otherwise send img over saveCh
+	go func(wg *sync.WaitGroup) {
+		wg.Add(1)
+		defer wg.Done()
+
+		for {
+			path := <-createCh
+			if path == "" {
+				break
+			}
+
 			img, err := NewImage(path)
 			if err != nil {
+				mu.Lock()
 				report.Unprocessed[path] = err.Error()
+				mu.Unlock()
 			} else {
 				saveCh <- img
 			}
 		}
 
 		close(createCh)
-	}()
+		saveCh <- nil
+	}(&wg)
 
 	// Goroutine for saving images
 	// It receives by channel Image struct and tries to save it
 	// If error occurs it adds the cause to report otherwise img is saved in dst directory
-	go func() {
-		for img := range saveCh {
+	go func(wg *sync.WaitGroup) {
+		wg.Add(1)
+		defer wg.Done()
+
+		for {
+			img := <-saveCh
+			if img == nil {
+				break
+			}
+
 			err := img.Save(dst, format)
+			mu.Lock()
 			if err != nil {
 				report.Unprocessed[img.src] = err.Error()
 			} else {
 				report.Imgs++
 			}
+			mu.Unlock()
 		}
 
 		close(saveCh)
-	}()
+	}(&wg)
 
 	// Walk through the files in the source directory
 	filepath.Walk(src, func(path string, f os.FileInfo, _ error) error {
@@ -227,6 +253,9 @@ func SortDir(src string, dst string, format string) (*DirSortReport, error) {
 
 		return nil
 	})
+
+	createCh <- ""
+	wg.Wait()
 
 	// Calculate the elapsed time
 	report.Elapsed = time.Since(start)
