@@ -20,7 +20,6 @@ var sortCmd = &cobra.Command{
 	Long:  "Sort photos contained in a directory by it's original creation date",
 	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-
 		format := cmd.Flag("format").Value.String()
 		err := validateFormatFlag(format)
 
