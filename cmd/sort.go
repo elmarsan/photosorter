@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/elmarsan/photosorter/pkg/photosorter"
 	"github.com/spf13/cobra"
@@ -28,6 +29,7 @@ var sortCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		start := time.Now()
 		report, err := photosorter.SortDir(args[0], args[1], format)
 
 		if err != nil {
@@ -35,7 +37,8 @@ var sortCmd = &cobra.Command{
 			return
 		}
 
-		fmt.Printf("Finished in: %fs\n", report.Elapsed.Seconds())
+		elapsed := time.Since(start)
+		fmt.Printf("\n%d images processed in: %fs\n", report.Imgs, elapsed.Seconds())
 	},
 }
 

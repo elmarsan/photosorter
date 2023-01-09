@@ -13,6 +13,7 @@ import (
 
 	"github.com/dsoprea/go-exif/v3"
 	exifcommon "github.com/dsoprea/go-exif/v3/common"
+	"github.com/schollz/progressbar/v3"
 )
 
 // Image represents an image file and holds original creation time from metadata.
@@ -144,8 +145,6 @@ func (img *Image) dst(dstDir string, format string) string {
 
 // DirSortReport holds information about the sort directory proccess
 type DirSortReport struct {
-	// elapsed time for sorting the directory.
-	Elapsed time.Duration
 	// number of images processed.
 	Imgs int
 	// map of unprocessed files and the error message.
@@ -155,7 +154,6 @@ type DirSortReport struct {
 // NewDirSortReport creates a new DirSortReport with default values.
 func NewDirSortReport() *DirSortReport {
 	return &DirSortReport{
-		Elapsed:     0,
 		Imgs:        0,
 		Unprocessed: make(map[string]string),
 	}
@@ -168,13 +166,6 @@ func NewDirSortReport() *DirSortReport {
 // and a map of unprocessed files and the error message.
 func SortDir(src string, dst string, format string) (*DirSortReport, error) {
 	report := NewDirSortReport()
-	start := time.Now()
-
-	// Check if the source directory exists
-	_, err := ioutil.ReadDir(src)
-	if os.IsNotExist(err) {
-		return nil, err
-	}
 
 	createCh := make(chan string)
 	saveCh := make(chan (*Image))
@@ -184,7 +175,7 @@ func SortDir(src string, dst string, format string) (*DirSortReport, error) {
 	// Goroutine for creating images
 	// It receives by channel img src and tries to create it
 	// If error occurs it adds the cause to report otherwise send img over saveCh
-	go func(wg *sync.WaitGroup) {
+	go func() {
 		wg.Add(1)
 		defer wg.Done()
 
@@ -206,12 +197,12 @@ func SortDir(src string, dst string, format string) (*DirSortReport, error) {
 
 		close(createCh)
 		saveCh <- nil
-	}(&wg)
+	}()
 
 	// Goroutine for saving images
 	// It receives by channel Image struct and tries to save it
 	// If error occurs it adds the cause to report otherwise img is saved in dst directory
-	go func(wg *sync.WaitGroup) {
+	go func() {
 		wg.Add(1)
 		defer wg.Done()
 
@@ -232,32 +223,78 @@ func SortDir(src string, dst string, format string) (*DirSortReport, error) {
 		}
 
 		close(saveCh)
-	}(&wg)
+	}()
+
+	// Get file paths of the src directory
+	paths, err := ScanDir(src)
+	if err != nil {
+		return nil, err
+	}
+
+	nfiles := len(*paths)
+
+	// progress bar used for display sorting process information in real time
+	progress := int64(nfiles)
+	bar := progressbar.NewOptions(int(progress),
+		progressbar.OptionSetWriter(os.Stdout),
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionShowBytes(true),
+		progressbar.OptionSetWidth(15),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[cyan]=[reset]",
+			SaucerHead:    "[cyan]>[reset]",
+			SaucerPadding: " ",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}))
+
+	for i, p := range *paths {
+		description := fmt.Sprintf("[cyan][%d/%d][reset]: %s", i, nfiles, p)
+		bar.Describe(description)
+
+		// Check if the file has the .jpg extension
+		jpg, err := regexp.MatchString(".jpg", p)
+		if err != nil {
+			fmt.Printf("regex err: %v", err)
+		}
+
+		if jpg {
+			createCh <- p
+		} else {
+			// File with no jpg extension are placed in unprocessed directly
+			report.Unprocessed[p] = "Not .jpg extension"
+		}
+
+		bar.Add(1)
+	}
+
+	// Send empty as message for clossing channel
+	createCh <- ""
+	wg.Wait()
+
+	return report, nil
+}
+
+// ScanDir scans the specified directory and returns a slice of strings
+// containing the paths of all files in the directory and its subdirectories.
+// It also checks if the directory exist.
+func ScanDir(src string) (*[]string, error) {
+	paths := []string{}
+
+	// Check if the source directory exists
+	_, err := ioutil.ReadDir(src)
+	if os.IsNotExist(err) {
+		return nil, err
+	}
 
 	// Walk through the files in the source directory
 	filepath.Walk(src, func(path string, f os.FileInfo, _ error) error {
 		if !f.IsDir() {
-			// Check if the file has the .jpg extension
-			jpg, err := regexp.MatchString(".jpg", f.Name())
-			if err != nil {
-				fmt.Printf("regex err: %v", err)
-			}
-
-			if jpg {
-				createCh <- path
-			} else {
-				// File with no jpg extension are placed in unprocessed directly
-				report.Unprocessed[path] = "Not .jpg extension"
-			}
+			paths = append(paths, path)
 		}
 
 		return nil
 	})
 
-	createCh <- ""
-	wg.Wait()
-
-	// Calculate the elapsed time
-	report.Elapsed = time.Since(start)
-	return report, nil
+	return &paths, nil
 }
