@@ -1,8 +1,8 @@
-Output ./photosorter.gif
+Output ./doc/photosorter.gif
 Set Height 1200
 Set Width 1200
 Set Margin 60
-Set MarginFill "blue.jpg"
+Set MarginFill "./doc/blue.jpg"
 Set WindowBar "Rings"
 
 Set WindowBar Colorful
@@ -18,12 +18,12 @@ Sleep 2s
 Enter
 Sleep 1s
 
-Type "tree ./img" 
+Type "tree ./test/img" 
 Sleep 1.5s 
 Enter
 Sleep 3s 
 
-Type "photosorter sort ./img ./sorted_imgs --format=month" 
+Type "photosorter sort ./test/img ./sorted_imgs --format=month" 
 Sleep 3s
 Enter
 Sleep 3s
@@ -32,3 +32,7 @@ Type "tree ./sorted_imgs"
 Sleep 3s
 Enter
 Sleep 5s
+
+Hide 
+Type "rm -r ./sorted_imgs"
+Enter
