@@ -10,7 +10,7 @@ Powered by [Cobra](https://github.com/spf13/cobra) and [Go-exif](https://github.
 
 ## Usage
 
-![Demo gif](./demo.gif)
+![Demo gif](./doc/photosorter.gif)
 
 The `sort` command requires two arguments: the source directory `src` containing the target photos, and the destination directory `dst` where the sorted photos will be output.
 Additionally, you can use the `--format` flag to choose the output structure directory. It accepts `month` and `year` as options.
